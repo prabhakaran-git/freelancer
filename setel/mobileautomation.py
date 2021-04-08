@@ -98,7 +98,8 @@ class ToDoIstMobileApp:
         self.driver.find_element_by_id('com.todoist:id/btn_continue_with_email').click()
         self.driver.find_element_by_id('com.todoist:id/log_in_password').send_keys(LOGIN_PASSWORD)
         self.driver.find_element_by_id('com.todoist:id/btn_log_in').click()
-        time.sleep(3)
+        icon = self.driver.find_element_by_id('com.todoist:id/empty_icon')
+        assert icon.is_displayed()
         
     def get_projects(self) -> list:
         """
@@ -219,7 +220,8 @@ class TestToDoIst(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         
-        AppiumService().start()
+        cls.appium_server = AppiumService()
+        cls.appium_server.start()
         cls.todoistapi = ToDoIstAPI()
         cls.todoistapp = ToDoIstMobileApp()
         cls.todoistapp.invoke_app()
@@ -307,7 +309,7 @@ class TestToDoIst(unittest.TestCase):
         
         cls.todoistapi.delete_project(cls.project_id)
         cls.todoistapp.driver.quit()
-        AppiumService().start()
+        cls.appium_server.stop()
         
 if __name__ == '__main__':
     unittest.main()
