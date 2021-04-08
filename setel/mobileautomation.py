@@ -1,17 +1,19 @@
-from appium.webdriver.common.touch_action import TouchAction
-from appium import webdriver
-import requests
-import unittest
+import os
 import json
 import uuid
-import os
 import time
+import requests
+import unittest
+from appium import webdriver
+from appium.webdriver.appium_service import AppiumService
+from appium.webdriver.common.touch_action import TouchAction
+
 
 CURRENT_DIR = os.path.dirname(__file__)
 LOGIN_EMAIL = 'testuser@test.com'
 LOGIN_PASSWORD = 'Test12345'
 PROJECT_NAME = 'TestProject'
-USER_NAME = 'TestUser'
+
 
 class ToDoIstAPI:
     
@@ -21,7 +23,7 @@ class ToDoIstAPI:
         self.api_token = 'ed64ece19ecfdfa9ebc94f9bf2fd8571e016d905'
         self.api_url = 'https://api.todoist.com/rest/v1/'
        
-    def create_new_project(self) -> int:
+    def create_new_project(self, name) -> int:
         """
         Description: Create a new project using API.
         """
@@ -29,27 +31,27 @@ class ToDoIstAPI:
         headers['Content-Type'] = 'application/json'
         headers['X-Request-Id'] = str(uuid.uuid4())
         headers['Authorization'] = 'Bearer %s' % self.api_token
-        data = data=json.dumps({"name": PROJECT_NAME})
+        data = data=json.dumps({"name": name})
         url = self.api_url + 'projects'
         response = requests.post(url, data=data, headers=headers)
-        self.project_id = response.json()['id']
-        return response.status_code 
-    
-    def delete_project(self):
+        assert response.status_code == 200
+        return response.json()['id']
+        
+    def delete_project(self, project_id):
         """
         Description: Delete the project
         """
         headers = {"Authorization": "Bearer %s" % self.api_token}
-        url = self.api_url + 'projects/' + str(self.project_id)
+        url = self.api_url + 'projects/' + str(project_id)
         requests.delete(url, headers=headers)
     
-    def get_tasks(self) -> list:
+    def get_tasks(self, project_id) -> list:
         """
         Description: Get the all task 
         """
         headers = {"Authorization": "Bearer %s" % self.api_token}
         url = self.api_url + 'tasks'
-        response = requests.get(url, headers=headers, params={'project_id': self.project_id})
+        response = requests.get(url, headers=headers, params={'project_id': project_id})
         return response.json()
     
     def reopen_task(self, task_id):
@@ -61,11 +63,11 @@ class ToDoIstAPI:
         response = requests.post(url, headers=headers)
         return response.status_code 
     
-    def get_task_id_by_content(self, content: str):
+    def get_task_id_by_content(self, project_id: int, content: str):
         """
         Description: Get the task id by task content
         """
-        tasks = self.get_tasks()
+        tasks = self.get_tasks(project_id)
         for task in tasks:
             if task['content'] == content:
                 return task['id']
@@ -200,7 +202,7 @@ class ToDoIstMobileApp:
         
     def refresh(self):
         """
-        Refresh the content by swipe 
+        Refresh the content by swiping 
         """
         toolbar = self.driver.find_element_by_id('com.todoist:id/toolbar')
         start_x = (toolbar.size['width'] // 2) +  toolbar.location['x']
@@ -211,10 +213,13 @@ class ToDoIstMobileApp:
         time.sleep(2)
         
 class TestToDoIst(unittest.TestCase):
-
+    
+    project_id = None
+    
     @classmethod
     def setUpClass(cls) -> None:
         
+        AppiumService().start()
         cls.todoistapi = ToDoIstAPI()
         cls.todoistapp = ToDoIstMobileApp()
         cls.todoistapp.invoke_app()
@@ -224,9 +229,8 @@ class TestToDoIst(unittest.TestCase):
         """
         STEP 1: Create test project via API
         """
-        status_code = self.todoistapi.create_new_project()
-        assert status_code == 200
-        
+        TestToDoIst.project_id = self.todoistapi.create_new_project(PROJECT_NAME)
+       
         """
         STEP 2: Login into mobile application.
         """
@@ -255,7 +259,7 @@ class TestToDoIst(unittest.TestCase):
         """
         STEP 2: API: Verify that task created correctly.
         """
-        actaul_tasks = [task['content'] for task in self.todoistapi.get_tasks()]
+        actaul_tasks = [task['content'] for task in self.todoistapi.get_tasks(self.project_id)]
         self.assertIn(task_name, actaul_tasks, 'Verify that task created correctly')
         
         
@@ -275,7 +279,7 @@ class TestToDoIst(unittest.TestCase):
         self.todoistapp.create_taks(task_name)
         actual_tasks = self.todoistapp.get_tasks()
         self.assertIn(task_name, actual_tasks, 'Verify task created in mobile app')
-        task_id = self.todoistapi.get_task_id_by_content(task_name)
+        task_id = self.todoistapi.get_task_id_by_content(self.project_id, task_name)
         
         """
         STEP 4: Complete test task.
@@ -300,8 +304,10 @@ class TestToDoIst(unittest.TestCase):
         
     @classmethod
     def tearDownClass(cls):
-        cls.todoistapi.delete_project()
+        
+        cls.todoistapi.delete_project(cls.project_id)
         cls.todoistapp.driver.quit()
-         
+        AppiumService().start()
+        
 if __name__ == '__main__':
     unittest.main()
